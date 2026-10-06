@@ -39,4 +39,22 @@ The take-home was meant to be "a couple of hours max". A lot more than that has 
 
 Open `shorts-vr-prototype.html` via any static server (three.js loads from cdnjs). In the desktop app, dev servers may be unavailable: run `python -m http.server 5178` in the background, then `preview_start` with `url: http://localhost:5178/shorts-vr-prototype.html`. The browser pane throttles rAF when hidden; to inspect states, step frames manually from JS (see `docs/06-figma-map.md` › Prototype notes).
 
-The prototype still models **Direction A** (vertical deck, Shift+drag down to step in). It does **not** yet model Winner A (flick right/left = like/pass, flick up = previous, pinch + pull down = step in). Updating it is an open task.
+The prototype defaults to **Winner A**:
+- Drag the card sideways to like or pass (tilt, 30% stamp and glow, spring back).
+- Drag up to go to the previous clip.
+- Drag down to step in.
+- 3 s Undo.
+- Ghost-hand first run on 3 lessons.
+- Free account: a 10 s "2-minute" preview, then the Premium panel. `P` toggles Free/Premium.
+
+**Tab** cycles Winner A → Direction A (vertical deck) → Arc wall.
+
+**View in VR** (WebXR, Quest browser) re-anchors the feed to your head.
+- Stick ← → like / pass, ↑ previous, ↓ or A step in.
+- Grip + pull down steps in.
+- Trigger clicks.
+- B undoes or goes back; hold B to hide.
+- Stick click recentres.
+- Hands can point and pinch to click; hand flicks aren't implemented.
+
+Untested in a real headset so far.

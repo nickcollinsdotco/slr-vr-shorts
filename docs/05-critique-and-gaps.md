@@ -69,13 +69,12 @@ An honest list of what's weak, unproven or missing. Ordered roughly by how much 
 
 ## Prototype
 
-- `shorts-vr-prototype.html` models Direction A (vertical deck, Shift+drag down to step in), not Winner A.
-- Updating it would make the motion bonus and the gesture argument much stronger:
-  - Flick L/R = like/pass with tilt + stamps.
-  - Flick up = previous + Undo.
-  - Pull down to step in.
-  - Preview timer → Premium panel.
-- It's desktop-only (mouse). A WebXR mode (three.js `VRButton`) would let Nick try it in a Quest browser. That's the single best way to validate distances and gestures.
+- Updated to Winner A (default), with Tab to compare against Direction A and the Arc wall, plus a WebXR "View in VR" mode.
+- Still to do:
+  - Test on a real Quest (sizes, distances, the comfort of pull down, controller mapping).
+  - Hand-tracking flicks.
+  - Real passthrough for hide (needs an `immersive-ar` session).
+  - Screen-record a walkthrough for the motion bonus.
 
 ## Questions still open
 
