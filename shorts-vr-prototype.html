@@ -1,0 +1,619 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Shorts VR Prototype</title>
+<style>
+:root{--bg:#08080a;--fg:#f2f2f3;--muted:#9a9aa2;--accent:#ff5a1f;--glass:rgba(22,22,26,.78);--line:rgba(255,255,255,.09)}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--fg);font:13px/1.45 system-ui,-apple-system,"Segoe UI",Inter,sans-serif;overflow:hidden}
+#gl{display:block;width:100vw;height:100vh;cursor:grab;touch-action:none}
+#gl.drag{cursor:grabbing}
+.vignette{pointer-events:none;position:fixed;inset:0;background:radial-gradient(ellipse 78% 88% at 50% 50%,transparent 62%,rgba(0,0,0,.8) 100%)}
+.panel{position:fixed;background:var(--glass);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border:1px solid var(--line);border-radius:14px;padding:12px 14px}
+.hud{top:16px;left:16px;width:290px}
+.hud h1{font-size:13px;margin:0 0 2px;font-weight:650;letter-spacing:.01em}
+.hud .mode{color:var(--accent);font-weight:600;margin-bottom:8px}
+.hud table{border-collapse:collapse;width:100%}
+.hud td{padding:2px 0;vertical-align:top;color:var(--muted)}
+.hud td:first-child{color:var(--fg);white-space:nowrap;padding-right:10px;font-variant-numeric:tabular-nums}
+kbd{font:600 11px/1 system-ui;background:rgba(255,255,255,.1);border:1px solid var(--line);border-radius:5px;padding:2px 5px}
+.hud .toggle{margin-top:8px;color:var(--muted);cursor:pointer;user-select:none}
+.hud.min table{display:none}
+.spec{right:16px;bottom:16px;width:380px;display:none}
+.spec.on{display:block}
+.spec h2{font-size:12px;margin:0 0 6px;font-weight:650}
+.spec p{margin:6px 0 0;color:var(--muted);font-size:12px}
+#toast{position:fixed;left:50%;width:max-content;top:16px;transform:translate(-50%,10px);opacity:0;transition:.25s;pointer-events:none;max-width:min(560px,calc(100vw - 32px));text-align:center}
+#toast.on{opacity:1;transform:translate(-50%,0)}
+#pull{position:fixed;left:50%;top:58%;transform:translateX(-50%);opacity:0;transition:opacity .15s;pointer-events:none;text-align:center;min-width:180px}
+#pull .bar{height:4px;border-radius:2px;background:rgba(255,255,255,.15);margin-top:6px;overflow:hidden}
+#pull .bar i{display:block;height:100%;width:0;background:var(--accent)}
+@media (max-width:700px){.hud{width:auto;right:16px}.spec{left:16px;width:auto}}
+</style>
+</head>
+<body>
+<canvas id="gl"></canvas>
+<div class="vignette"></div>
+
+<div class="panel hud" id="hud">
+  <h1>Shorts in VR · prototype</h1>
+  <div class="mode" id="modeLabel">Direction A · Stack + Portal</div>
+  <table>
+    <tr><td>Scroll · drag card ↕ · <kbd>↑</kbd><kbd>↓</kbd></td><td>next / prev</td></tr>
+    <tr><td>Click card</td><td>pause</td></tr>
+    <tr><td>Double-click</td><td>like</td></tr>
+    <tr><td><kbd>Shift</kbd>+drag ↓ card</td><td>pull to step in (≈ grip + pull)</td></tr>
+    <tr><td><kbd>Enter</kbd> / <kbd>Esc</kbd></td><td>step in / back to feed</td></tr>
+    <tr><td><kbd>Tab</kbd></td><td>Direction B · Arc wall</td></tr>
+    <tr><td><kbd>R</kbd></td><td>recline mode</td></tr>
+    <tr><td><kbd>H</kbd></td><td>discreet (hide → passthrough)</td></tr>
+    <tr><td><kbd>O</kbd></td><td>compare web-style overlay UI</td></tr>
+    <tr><td><kbd>I</kbd></td><td>spatial spec</td></tr>
+    <tr><td>Drag empty space</td><td>look around</td></tr>
+  </table>
+  <div class="toggle" id="hudToggle">Hide keys</div>
+</div>
+
+<div class="panel spec" id="spec">
+  <h2>Spatial spec · side view</h2>
+  <svg viewBox="0 0 360 170" width="100%" role="img" aria-label="Side view: eye at 1.2 m, card 1.6 m away, 1.1 m tall, centred 7 degrees below eye line">
+    <line x1="10" y1="150" x2="350" y2="150" stroke="#333" />
+    <circle cx="40" cy="62" r="6" fill="#f2f2f3"/>
+    <text x="22" y="48" fill="#9a9aa2" font-size="10">eye 1.2 m</text>
+    <line x1="40" y1="62" x2="300" y2="62" stroke="#555" stroke-dasharray="3 3"/>
+    <line x1="40" y1="62" x2="290" y2="94" stroke="#ff5a1f" stroke-width="1.5"/>
+    <line x1="40" y1="62" x2="290" y2="30" stroke="#666"/>
+    <line x1="40" y1="62" x2="290" y2="158" stroke="#666"/>
+    <rect x="288" y="26" width="6" height="134" rx="2" fill="#f2f2f3"/>
+    <rect x="318" y="8" width="5" height="126" rx="2" fill="#f2f2f3" opacity=".3"/>
+    <text x="326" y="20" fill="#9a9aa2" font-size="9">next</text>
+    <text x="150" y="88" fill="#ff5a1f" font-size="10">−7° below eye line</text>
+    <text x="140" y="140" fill="#9a9aa2" font-size="10">1.6 m</text>
+    <text x="300" y="98" fill="#f2f2f3" font-size="10">1.1 m</text>
+    <text x="300" y="110" fill="#9a9aa2" font-size="10">≈35° vFOV</text>
+  </svg>
+  <p>Card 9:16, slightly curved (R 1.6 m). Deck in depth: next clips queue 0.4 m behind as still frames (only the active clip decodes); watched clip lifts up and out. Keeps the floor and ornaments clear. Controls live in ornaments <b>outside</b> the frame (YouTube / visionOS pattern). Hit targets ≥ 7 cm at 1.6 m.</p>
+</div>
+
+<div class="panel" id="toast"></div>
+<div class="panel" id="pull"><span id="pullTxt">Pull to step in</span><div class="bar"><i id="pullBar"></i></div></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+// ---------- constants (metres) ----------
+const H_CARD = 1.1, W_CARD = H_CARD * 9 / 16, DIST = 1.6, EYE = 1.2, DROP = 7 * Math.PI / 180, GAP = 0.34;
+const CY = -Math.tan(DROP) * DIST;           // card centre relative to eye
+const ACCENT = '#ff5a1f';
+const FONT = 'system-ui, -apple-system, "Segoe UI", Inter, sans-serif';
+const CLIP_LEN = 15;
+
+const SHORTS = [
+  { performer: 'Performer A', studio: 'Studio North', title: 'Golden hour balcony', full: '24:10', at: 155, likes: 7800, vr: true, hue: 18 },
+  { performer: 'Performer B', studio: 'Lumen VR', title: 'Rooftop pool, Lisbon', full: '31:42', at: 610, likes: 5200, vr: true, hue: 195 },
+  { performer: 'Performer C', studio: 'Studio North', title: 'Neon studio session', full: '18:05', at: 92, likes: 12400, vr: true, hue: 290 },
+  { performer: 'Performer D', studio: 'Halo Films', title: 'Morning coffee POV', full: '27:30', at: 1201, likes: 3100, vr: true, hue: 35 },
+  { performer: 'Performer E', studio: 'Lumen VR', title: 'Behind the scenes', full: '06:12', at: 40, likes: 980, vr: false, hue: 150 },
+  { performer: 'Performer F', studio: 'Halo Films', title: 'Beach house tour', full: '22:48', at: 480, likes: 8650, vr: true, hue: 210 },
+  { performer: 'Performer G', studio: 'Velvet 180', title: 'Velvet lounge', full: '35:00', at: 1530, likes: 15100, vr: true, hue: 340 },
+  { performer: 'Performer H', studio: 'Velvet 180', title: 'Garden cabin', full: '19:20', at: 300, likes: 4400, vr: true, hue: 95 },
+];
+const N = SHORTS.length;
+
+const state = {
+  mode: 'stack',          // stack | arc | toImm | imm | fromImm
+  index: 0, stackPos: 0, dragOffset: 0,
+  pull: 0, pullS: 0,
+  paused: false, muted: false, overlay: false, hidden: false,
+  recline: false, reclineA: 0,
+  yaw: 0, pitch: -.17,
+  lastActive: performance.now(),
+  trans: 0, immT: 0, arcFocus: 0,
+};
+
+// ---------- helpers ----------
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const lerp = (a, b, k) => a + (b - a) * k;
+const smooth = (a, b, x) => { const t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
+const easeInOut = t => t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+const fmt = s => { s = Math.max(0, Math.floor(s)); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); };
+const fmtK = n => n >= 1000 ? (n / 1000).toFixed(1).replace('.0', '') + 'K' : String(n);
+function rr(ctx, x, y, w, h, r) {
+  r = Math.min(r, w / 2, h / 2);
+  ctx.beginPath(); ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath();
+}
+function glass(ctx, x, y, w, h, r, hover) {
+  rr(ctx, x, y, w, h, r);
+  ctx.fillStyle = hover ? 'rgba(52,52,60,.94)' : 'rgba(26,26,31,.88)'; ctx.fill();
+  ctx.strokeStyle = 'rgba(255,255,255,.1)'; ctx.lineWidth = 1.5; ctx.stroke();
+}
+function text(ctx, s, x, y, size, weight = 500, color = '#f2f2f3', align = 'left') {
+  ctx.font = `${weight} ${size}px ${FONT}`; ctx.fillStyle = color; ctx.textAlign = align; ctx.textBaseline = 'middle'; ctx.fillText(s, x, y);
+}
+
+// ---------- three setup ----------
+const canvas = document.getElementById('gl');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.outputEncoding = THREE.sRGBEncoding;
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x08080a);
+scene.fog = new THREE.Fog(0x08080a, 4, 14);
+const camera = new THREE.PerspectiveCamera(60, 1, 0.05, 100);
+camera.position.set(0, EYE, 0);
+camera.rotation.order = 'YXZ';
+scene.add(camera);
+
+function canvasTex(cv) { const t = new THREE.CanvasTexture(cv); t.encoding = THREE.sRGBEncoding; t.anisotropy = renderer.capabilities.getMaxAnisotropy(); return t; }
+function radialTex(size = 256, inner = 'rgba(255,255,255,1)') {
+  const cv = document.createElement('canvas'); cv.width = cv.height = size; const c = cv.getContext('2d');
+  const g = c.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
+  g.addColorStop(0, inner); g.addColorStop(1, 'rgba(255,255,255,0)'); c.fillStyle = g; c.fillRect(0, 0, size, size);
+  return new THREE.CanvasTexture(cv);
+}
+
+// environment
+const grid = new THREE.PolarGridHelper(9, 24, 10, 64, 0x26262c, 0x1a1a1f);
+grid.material.transparent = true; grid.material.opacity = .3; grid.material.depthWrite = false; grid.renderOrder = -10; scene.add(grid);
+const floorGlow = new THREE.Mesh(new THREE.PlaneGeometry(4.5, 4.5), new THREE.MeshBasicMaterial({ map: radialTex(), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, opacity: .16 }));
+floorGlow.renderOrder = -9; floorGlow.rotation.x = -Math.PI / 2; floorGlow.position.set(0, .01, -1.7); scene.add(floorGlow);
+
+// passthrough simulation (discreet mode)
+const ptCv = document.createElement('canvas'); ptCv.width = 1024; ptCv.height = 512;
+(() => {
+  const c = ptCv.getContext('2d'); const g = c.createLinearGradient(0, 0, 0, 512);
+  g.addColorStop(0, '#6b665f'); g.addColorStop(.55, '#8a8378'); g.addColorStop(.56, '#4b443c'); g.addColorStop(1, '#2d2924');
+  c.fillStyle = g; c.fillRect(0, 0, 1024, 512); c.filter = 'blur(18px)';
+  c.fillStyle = '#c9c2b5'; c.fillRect(420, 120, 200, 150);         // window
+  c.fillStyle = '#3a332c'; c.fillRect(150, 230, 220, 120);          // desk
+  c.fillStyle = '#5c5048'; c.fillRect(700, 250, 260, 110);          // sofa
+  c.filter = 'none'; c.fillStyle = 'rgba(0,0,0,.08)'; for (let i = 0; i < 3000; i++) c.fillRect(Math.random() * 1024, Math.random() * 512, 2, 2);
+})();
+const ptSphere = new THREE.Mesh(new THREE.SphereGeometry(20, 48, 24), new THREE.MeshBasicMaterial({ map: canvasTex(ptCv), side: THREE.BackSide, fog: false }));
+ptSphere.position.copy(camera.position); ptSphere.rotation.y = Math.PI / 2; ptSphere.visible = false; scene.add(ptSphere);
+
+// feed root pivots at the eye so recline can re-anchor content to the gaze
+const feedRoot = new THREE.Group(); feedRoot.position.set(0, EYE, 0); scene.add(feedRoot);
+
+const spill = new THREE.Mesh(new THREE.PlaneGeometry(3.2, 3.2), new THREE.MeshBasicMaterial({ map: radialTex(), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, opacity: .3, fog: false }));
+spill.renderOrder = -8; spill.position.set(0, CY, -DIST - .55); feedRoot.add(spill);
+const spillColor = new THREE.Color();
+
+// ---------- cards ----------
+function bentPlane(w, h, R) {
+  const g = new THREE.PlaneGeometry(w, h, 24, 1); const p = g.attributes.position;
+  for (let i = 0; i < p.count; i++) { const x = p.getX(i); p.setZ(i, R - Math.sqrt(R * R - x * x)); }
+  g.computeVertexNormals(); return g;
+}
+const cardGeo = bentPlane(W_CARD, H_CARD, DIST);
+
+function drawScene(ctx, w, h, d, t, wide) {
+  // abstract stand-in for real footage: gradient room, moving light, a figure
+  const hue = d.hue;
+  const g = ctx.createLinearGradient(0, 0, wide ? 0 : w, h);
+  g.addColorStop(0, `hsl(${hue},60%,38%)`); g.addColorStop(1, `hsl(${hue + 35},65%,12%)`);
+  ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
+  if (wide) { ctx.fillStyle = `hsla(${hue},30%,6%,.55)`; ctx.fillRect(0, h * .58, w, h * .42); }
+  for (let k = 0; k < 4; k++) {
+    const x = w * (.5 + (wide ? .4 : .32) * Math.sin(t * .4 + k * 1.7)), y = h * (.35 + .25 * Math.cos(t * .3 + k * 2.1)), r = (wide ? h : w) * (.35 + .1 * k);
+    const rg = ctx.createRadialGradient(x, y, 0, x, y, r);
+    rg.addColorStop(0, `hsla(${hue + k * 22},85%,65%,.32)`); rg.addColorStop(1, `hsla(${hue},80%,50%,0)`);
+    ctx.fillStyle = rg; ctx.fillRect(0, 0, w, h);
+  }
+  const s = wide ? h * .3 : w; const cx = w / 2 + Math.sin(t * 1.1) * s * .025;
+  const top = wide ? h * .37 : h * .2;
+  ctx.fillStyle = `hsla(${hue + 15},35%,86%,.9)`;
+  ctx.beginPath(); ctx.arc(cx, top + s * .13, s * .11, 0, Math.PI * 2); ctx.fill();
+  rr(ctx, cx - s * .21, top + s * .27, s * .42, wide ? h * .38 : h * .75, s * .12); ctx.fill();
+}
+
+function drawWebOverlay(ctx, w, h, d) {
+  const g = ctx.createLinearGradient(0, h * .62, 0, h); g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(1, 'rgba(0,0,0,.8)');
+  ctx.fillStyle = g; ctx.fillRect(0, h * .62, w, h * .38);
+  rr(ctx, 22, h - 150, 190, 44, 10); ctx.fillStyle = 'rgba(255,255,255,.2)'; ctx.fill();
+  text(ctx, '▶  Watch full video', 38, h - 128, 18, 600);
+  text(ctx, d.title, 22, h - 80, 20, 600);
+  text(ctx, d.performer, 22, h - 52, 16, 500, 'rgba(255,255,255,.75)');
+  ['♥', '↗', '♪', '⋯', '◎'].forEach((ic, i) => { text(ctx, ic, w - 40, h * .5 + i * 64, 30, 600, '#fff', 'center'); });
+  ctx.setLineDash([10, 8]); ctx.strokeStyle = 'rgba(255,90,31,.95)'; ctx.lineWidth = 3;
+  ctx.strokeRect(6, h * .44, w - 12, h * .56 - 6); ctx.setLineDash([]);
+  rr(ctx, 14, h * .44 - 40, 250, 32, 8); ctx.fillStyle = ACCENT; ctx.fill();
+  text(ctx, 'UI covers ~45% of the frame', 26, h * .44 - 24, 16, 650);
+}
+
+const cards = SHORTS.map((d, idx) => {
+  const cv = document.createElement('canvas'); cv.width = 432; cv.height = 768;
+  const ctx = cv.getContext('2d'); const tex = canvasTex(cv);
+  const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false, fog: false });
+  const mesh = new THREE.Mesh(cardGeo, mat);
+  const c = { idx, d, cv, ctx, tex, mat, mesh, t: idx * 3.1, op: 0 };
+  mesh.userData.card = c; mesh.position.set(0, CY - idx * (H_CARD + GAP), -DIST); feedRoot.add(mesh);
+  drawCard(c); return c;
+});
+function drawCard(c) {
+  const { ctx, cv } = c, w = cv.width, h = cv.height;
+  ctx.clearRect(0, 0, w, h); ctx.save(); rr(ctx, 0, 0, w, h, 26); ctx.clip();
+  drawScene(ctx, w, h, c.d, c.t, false);
+  if (state.overlay) drawWebOverlay(ctx, w, h, c.d);
+  ctx.restore(); c.tex.needsUpdate = true;
+}
+
+// ---------- ornaments (outside the frame) ----------
+const interactive = [];
+function makePanel(wm, hm, draw, opts = {}) {
+  const ppm = 2000;
+  const cv = document.createElement('canvas'); cv.width = Math.round(wm * ppm); cv.height = Math.round(hm * ppm);
+  const ctx = cv.getContext('2d'); const tex = canvasTex(cv);
+  const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false, fog: false });
+  const mesh = new THREE.Mesh(new THREE.PlaneGeometry(wm, hm), mat); mesh.renderOrder = 10;
+  const p = {
+    mesh, mat, hover: false, w: wm * 1000, h: hm * 1000,
+    redraw() { ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, cv.width, cv.height); ctx.setTransform(ppm / 1000, 0, 0, ppm / 1000, 0, 0); draw(ctx, p.w, p.h, p); tex.needsUpdate = true; }
+  };
+  mesh.userData.panel = p;
+  if (opts.onClick) { mesh.userData.onClick = opts.onClick; interactive.push(mesh); }
+  p.redraw(); return p;
+}
+const cur = () => SHORTS[state.index];
+
+const orn = new THREE.Group(); orn.position.set(0, CY, -DIST + .005); feedRoot.add(orn);
+const ornPanels = [];
+let ornAlpha = 1;
+
+// right rail
+const railDefs = [
+  { key: 'like', icon: () => '♥', label: () => fmtK(cur().likes + (cur().liked ? 1 : 0)), on: () => !!cur().liked, click: () => like() },
+  { key: 'save', icon: () => cur().saved ? '✓' : '+', label: () => cur().saved ? 'Saved' : 'Save', on: () => !!cur().saved, click: () => { cur().saved = !cur().saved; toast(cur().saved ? 'Saved to Watch later' : 'Removed from Watch later'); redrawOrn(); } },
+  { key: 'sound', icon: () => state.muted ? '✕' : '♪', label: () => state.muted ? 'Muted' : 'Sound', on: () => false, click: () => { state.muted = !state.muted; toast(state.muted ? 'Muted' : 'Sound on · spatial, anchored to the card'); redrawOrn(); } },
+  { key: 'share', icon: () => '↗', label: () => 'Share', on: () => false, click: () => toast('Share · post-MVP') },
+  { key: 'more', icon: () => '⋯', label: () => 'More', on: () => false, click: () => toast('More: not interested, report, quality · post-MVP') },
+];
+railDefs.forEach((def, i) => {
+  const p = makePanel(.08, .1, (ctx, w, h, p) => {
+    const on = def.on();
+    ctx.beginPath(); ctx.arc(w / 2, 38, 34, 0, Math.PI * 2);
+    ctx.fillStyle = p.hover ? 'rgba(52,52,60,.95)' : 'rgba(26,26,31,.9)'; ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,.1)'; ctx.lineWidth = 1.5; ctx.stroke();
+    text(ctx, def.icon(), w / 2, 39, 30, 700, on ? ACCENT : '#f2f2f3', 'center');
+    text(ctx, def.label(), w / 2, 89, 15, 600, '#c9c9cf', 'center');
+  }, { onClick: def.click });
+  p.mesh.position.set(W_CARD / 2 + .075, -.08 - i * .11, 0); orn.add(p.mesh); ornPanels.push(p);
+});
+
+// left rail: feed tabs
+let tab = 0;
+['For you', 'Following', 'New'].forEach((label, i) => {
+  const p = makePanel(.15, .05, (ctx, w, h, p) => {
+    if (tab === i || p.hover) glass(ctx, 1, 1, w - 2, h - 2, 24, p.hover && tab !== i);
+    text(ctx, label, w / 2, h / 2, 18, tab === i ? 700 : 500, tab === i ? '#fff' : '#9a9aa2', 'center');
+    if (tab === i) { ctx.fillStyle = ACCENT; rr(ctx, w / 2 - 14, h - 8, 28, 4, 2); ctx.fill(); }
+  }, { onClick: () => { tab = i; ornPanels.forEach(q => q.redraw()); toast(label + ' feed'); } });
+  p.mesh.position.set(-W_CARD / 2 - .12, H_CARD / 2 - .05 - i * .065, 0); orn.add(p.mesh); ornPanels.push(p);
+});
+
+// progress bar (just outside bottom edge)
+const progBg = new THREE.Mesh(new THREE.PlaneGeometry(W_CARD - .02, .006), new THREE.MeshBasicMaterial({ color: 0x3a3a42, transparent: true, depthWrite: false }));
+progBg.position.set(0, -H_CARD / 2 - .014, 0); orn.add(progBg);
+const progFg = new THREE.Mesh(new THREE.PlaneGeometry(1, .006), new THREE.MeshBasicMaterial({ color: ACCENT, transparent: true, depthWrite: false }));
+progFg.position.set(0, -H_CARD / 2 - .014, .001); progFg.renderOrder = 11; orn.add(progFg);
+
+// info panel under the card
+const info = makePanel(W_CARD, .13, (ctx, w, h) => {
+  const d = cur();
+  glass(ctx, 1, 1, w - 2, h - 2, 22);
+  ctx.beginPath(); ctx.arc(42, 40, 22, 0, Math.PI * 2); ctx.fillStyle = `hsl(${d.hue},55%,55%)`; ctx.fill();
+  text(ctx, d.performer[d.performer.length - 1], 42, 41, 20, 700, '#111', 'center');
+  text(ctx, d.performer, 76, 32, 21, 700);
+  text(ctx, d.studio, 76, 54, 15, 500, '#9a9aa2');
+  rr(ctx, w - 108, 22, 90, 36, 18); ctx.strokeStyle = 'rgba(255,255,255,.35)'; ctx.lineWidth = 1.5; ctx.stroke();
+  text(ctx, 'Follow', w - 63, 41, 15, 650, '#fff', 'center');
+  text(ctx, d.title, 22, 92, 20, 600);
+  text(ctx, d.vr ? `Full scene · ${d.full} · VR 180°` : `Full video · ${d.full} · flat only`, 22, 116, 15, 500, '#9a9aa2');
+});
+info.mesh.position.set(0, -H_CARD / 2 - .03 - .065, 0); orn.add(info.mesh); ornPanels.push(info);
+
+// step-in button
+const stepBtn = makePanel(W_CARD, .07, (ctx, w, h, p) => {
+  const d = cur();
+  if (d.vr) {
+    rr(ctx, 1, 1, w - 2, h - 2, 34); ctx.fillStyle = p.hover ? '#ff7440' : ACCENT; ctx.fill();
+    text(ctx, '◉  Step in  ·  VR 180°', 28, h / 2, 23, 750);
+    text(ctx, 'continues at ' + fmt(d.at), w - 26, h / 2, 15, 600, 'rgba(255,255,255,.85)', 'right');
+  } else {
+    glass(ctx, 1, 1, w - 2, h - 2, 34, p.hover);
+    text(ctx, '▶  Watch full video (2D)', 28, h / 2, 21, 650);
+    text(ctx, 'no VR source', w - 26, h / 2, 15, 500, '#9a9aa2', 'right');
+  }
+}, { onClick: () => stepIn() });
+stepBtn.mesh.position.set(0, -H_CARD / 2 - .03 - .13 - .015 - .035, 0); orn.add(stepBtn.mesh); ornPanels.push(stepBtn);
+
+function redrawOrn() { ornPanels.forEach(p => p.redraw()); }
+
+// like burst (transient feedback, centre of card)
+const heart = makePanel(.22, .22, (ctx, w, h) => text(ctx, '♥', w / 2, h / 2 + 8, 200, 700, ACCENT, 'center'));
+heart.mesh.position.set(0, CY, -DIST + .05); heart.mat.opacity = 0; feedRoot.add(heart.mesh);
+let heartT = -1;
+
+// ---------- immersive (portal) ----------
+const domeCv = document.createElement('canvas'); domeCv.width = 1536; domeCv.height = 1168;  // 180° × 137°, square pixels
+const domeCtx = domeCv.getContext('2d'); const domeTex = canvasTex(domeCv);
+const domeGeo = new THREE.SphereGeometry(6, 64, 32, Math.PI, Math.PI, Math.PI * .12, Math.PI * .76); domeGeo.scale(-1, 1, 1);
+const dome = new THREE.Mesh(domeGeo, new THREE.MeshBasicMaterial({ map: domeTex, transparent: true, opacity: 0, depthWrite: false, fog: false, side: THREE.DoubleSide }));
+dome.renderOrder = -1; dome.visible = false; feedRoot.add(dome);
+function drawDome(t) {
+  const c = domeCtx, w = domeCv.width, h = domeCv.height;
+  c.globalCompositeOperation = 'source-over'; c.clearRect(0, 0, w, h);
+  drawScene(c, w, h, cur(), t, true);
+  // feathered edges so the 180° frame dissolves into the void
+  c.globalCompositeOperation = 'destination-in';
+  let g = c.createLinearGradient(0, 0, w, 0);
+  g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(.1, '#000'); g.addColorStop(.9, '#000'); g.addColorStop(1, 'rgba(0,0,0,0)');
+  c.fillStyle = g; c.fillRect(0, 0, w, h);
+  g = c.createLinearGradient(0, 0, 0, h);
+  g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(.12, '#000'); g.addColorStop(.88, '#000'); g.addColorStop(1, 'rgba(0,0,0,0)');
+  c.fillStyle = g; c.fillRect(0, 0, w, h);
+  c.globalCompositeOperation = 'source-over'; domeTex.needsUpdate = true;
+}
+
+// player panel echoes the existing SLR VR player (dark glass, orange accent, chapter timeline)
+const playerGroup = new THREE.Group(); playerGroup.position.set(0, -.5, -1.15); playerGroup.rotation.x = .42; feedRoot.add(playerGroup);
+const player = makePanel(.9, .25, (ctx, w, h) => {
+  const d = cur(); const total = toSec(d.full); const t = state.immT; const x0 = 30, x1 = w - 30;
+  glass(ctx, 1, 1, w - 2, h - 2, 26);
+  text(ctx, d.performer + ' · ' + d.title, 132, 42, 20, 650);
+  rr(ctx, w - 270, 22, 150, 40, 20); ctx.fillStyle = ACCENT; ctx.fill(); text(ctx, '◆ Get Premium', w - 195, 43, 16, 700, '#fff', 'center');
+  glass(ctx, w - 108, 22, 80, 40, 20); text(ctx, '♥ ' + fmtK(d.likes), w - 68, 43, 15, 600, '#fff', 'center');
+  const y = 118, fx = x0 + (x1 - x0) * clamp(t / total, 0, 1), sx = x0 + (x1 - x0) * (d.at / total);
+  rr(ctx, x0, y - 4, x1 - x0, 8, 4); ctx.fillStyle = 'rgba(255,255,255,.14)'; ctx.fill();
+  rr(ctx, x0, y - 4, Math.max(8, fx - x0), 8, 4); ctx.fillStyle = ACCENT; ctx.fill();
+  ctx.fillStyle = 'rgba(255,255,255,.9)'; ctx.fillRect(sx - 1.5, y - 14, 3, 28);
+  rr(ctx, sx - 62, y - 50, 124, 28, 14); ctx.fillStyle = '#f2f2f3'; ctx.fill(); text(ctx, 'From the short', sx, y - 36, 14, 700, '#111', 'center');
+  ctx.beginPath(); ctx.arc(fx, y, 10, 0, Math.PI * 2); ctx.fillStyle = '#fff'; ctx.fill();
+  text(ctx, fmt(t), x0, 152, 15, 600, '#c9c9cf'); text(ctx, d.full, x1, 152, 15, 600, '#c9c9cf', 'right');
+  text(ctx, '⟲10', w / 2 - 90, 205, 22, 600, '#f2f2f3', 'center');
+  text(ctx, state.paused ? '▶' : '❚❚', w / 2, 205, 28, 700, '#fff', 'center');
+  text(ctx, '10⟳', w / 2 + 90, 205, 22, 600, '#f2f2f3', 'center');
+  text(ctx, 'Next short ↓', x1, 205, 15, 600, '#9a9aa2', 'right');
+});
+playerGroup.add(player.mesh);
+const backBtn = makePanel(.095, .045, (ctx, w, h, p) => { glass(ctx, 1, 1, w - 2, h - 2, 22, p.hover); text(ctx, '‹ Feed', w / 2, h / 2, 17, 700, '#fff', 'center'); }, { onClick: () => stepOut() });
+backBtn.mesh.position.set(-.9 / 2 + .065, .25 / 2 - .042, .002); playerGroup.add(backBtn.mesh);
+const immPanels = [player, backBtn];
+let immAlpha = 0, lastPlayerDraw = 0;
+function toSec(s) { const [m, ss] = s.split(':').map(Number); return m * 60 + ss; }
+
+// dim veil attached to camera hides the short → scene hand-off
+const veil = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0, depthTest: false, depthWrite: false }));
+veil.position.z = -.12; veil.renderOrder = 100; camera.add(veil);
+
+// ---------- actions ----------
+const toastEl = document.getElementById('toast'); let toastTimer;
+function toast(msg, ms = 2400) { toastEl.textContent = msg; toastEl.classList.add('on'); clearTimeout(toastTimer); toastTimer = setTimeout(() => toastEl.classList.remove('on'), ms); }
+function wake() { state.lastActive = performance.now(); }
+
+function go(dir) {
+  if (state.mode !== 'stack' && state.mode !== 'imm') return;
+  const next = state.index + dir;
+  if (next < 0 || next >= N) { toast(next < 0 ? 'Top of feed' : 'End of feed · prototype has 8 shorts'); return; }
+  if (state.mode === 'imm') { stepOut(() => go(dir)); return; }
+  state.index = next; state.paused = false; redrawOrn();
+}
+function like() {
+  const d = cur(); d.liked = !d.liked; if (d.liked) heartT = 0;
+  redrawOrn(); toast(d.liked ? 'Liked · tunes For you' : 'Like removed', 1400);
+}
+function togglePause() { state.paused = !state.paused; toast(state.paused ? 'Paused' : 'Playing', 900); if (state.mode === 'imm') player.redraw(); }
+function stepIn() {
+  if (state.mode !== 'stack') return;
+  const d = cur();
+  if (!d.vr) { toast('Flat-only clip → opens 2D full video in the theatre panel (not in prototype)'); return; }
+  state.mode = 'toImm'; state.trans = 0; state.immT = d.at; dome.visible = true; drawDome(cards[state.index].t);
+}
+let afterOut = null;
+function stepOut(cb) { if (state.mode !== 'imm') return; afterOut = cb || null; state.mode = 'fromImm'; state.trans = 1; }
+function setArc(on) {
+  if (on && state.mode === 'stack') { state.mode = 'arc'; state.arcCenter = state.index; document.getElementById('modeLabel').textContent = 'Direction B · Arc wall (browse)'; toast('Arc wall: look around to focus; only the focused clip plays'); }
+  else if (!on && state.mode === 'arc') { state.mode = 'stack'; state.index = state.arcFocus; state.stackPos = state.index; state.yaw = 0; redrawOrn(); document.getElementById('modeLabel').textContent = 'Direction A · Stack + Portal'; }
+}
+function toggleOverlay() { state.overlay = !state.overlay; cards.forEach(drawCard); toast(state.overlay ? 'Web-style overlay: UI sits on the lower frame and hides key content' : 'Ornaments: controls live outside the frame, content stays clean (YouTube / visionOS pattern)', 3200); }
+function toggleHidden() {
+  state.hidden = !state.hidden; ptSphere.visible = state.hidden; feedRoot.visible = !state.hidden; grid.visible = floorGlow.visible = !state.hidden;
+  scene.fog.color.set(state.hidden ? 0x6b665f : 0x08080a);
+  toast(state.hidden ? 'Discreet: content + audio cut, passthrough on. Press H to return to the same frame.' : 'Back, same frame, paused for 1 s');
+}
+function toggleRecline() { state.recline = !state.recline; toast(state.recline ? 'Recline: feed re-anchors to your gaze once (not head-locked)' : 'Seated: feed returns to default anchor', 2800); }
+
+// ---------- input ----------
+const ray = new THREE.Raycaster(), ndc = new THREE.Vector2();
+function pick(e) {
+  ndc.set(e.clientX / innerWidth * 2 - 1, -(e.clientY / innerHeight) * 2 + 1); ray.setFromCamera(ndc, camera);
+  const list = [];
+  if (state.mode === 'stack') { list.push(cards[state.index].mesh); if (ornAlpha > .05) interactive.forEach(m => { if (m.parent === orn) list.push(m); }); }
+  else if (state.mode === 'arc') cards.forEach(c => c.mesh.visible && list.push(c.mesh));
+  else if (state.mode === 'imm') list.push(backBtn.mesh);
+  const hit = ray.intersectObjects(list, false)[0]; return hit ? hit.object : null;
+}
+let hovered = null;
+function setHover(obj) {
+  const p = obj && obj.userData.onClick ? obj.userData.panel : null;
+  if (hovered === p) return;
+  if (hovered) { hovered.hover = false; hovered.redraw(); }
+  hovered = p; if (p) { p.hover = true; p.redraw(); }
+  canvas.style.cursor = p || (obj && obj.userData.card) ? 'pointer' : '';
+}
+const ptr = { down: false, mode: null, sx: 0, sy: 0, x: 0, y: 0, moved: false, target: null };
+let clickTimer = null;
+const pullEl = document.getElementById('pull'), pullTxt = document.getElementById('pullTxt'), pullBar = document.getElementById('pullBar');
+
+canvas.addEventListener('pointerdown', e => {
+  wake(); canvas.setPointerCapture(e.pointerId);
+  Object.assign(ptr, { down: true, sx: e.clientX, sy: e.clientY, x: e.clientX, y: e.clientY, moved: false, target: null });
+  const hit = pick(e);
+  if (hit && hit.userData.onClick) { ptr.mode = 'button'; ptr.target = hit; }
+  else if (hit && hit.userData.card && state.mode === 'arc') { ptr.mode = 'arcCard'; ptr.target = hit; }
+  else if (hit && hit.userData.card && state.mode === 'stack') ptr.mode = e.shiftKey ? 'pull' : 'flick';
+  else { ptr.mode = 'look'; canvas.classList.add('drag'); }
+});
+canvas.addEventListener('pointermove', e => {
+  wake();
+  if (!ptr.down) { setHover(pick(e)); return; }
+  const dx = e.clientX - ptr.x, dy = e.clientY - ptr.y; ptr.x = e.clientX; ptr.y = e.clientY;
+  if (Math.hypot(e.clientX - ptr.sx, e.clientY - ptr.sy) > 6) ptr.moved = true;
+  if (ptr.mode === 'look' || ptr.mode === 'arcCard') {
+    state.yaw += dx * .0035; state.pitch = clamp(state.pitch + dy * .0035, -1.2, 1.2);
+  } else if (ptr.mode === 'flick') {
+    state.dragOffset = clamp(-(e.clientY - ptr.sy) / 320, -1.2, 1.2);
+  } else if (ptr.mode === 'pull') {
+    state.pull = clamp((e.clientY - ptr.sy) / 220, 0, 1);
+    pullEl.style.opacity = state.pull > .04 ? 1 : 0; pullBar.style.width = (state.pull / .8 * 100).toFixed(0) + '%';
+    pullTxt.textContent = !cur().vr ? 'No VR source for this clip' : state.pull > .8 ? 'Release to step in' : 'Pull to step in';
+  }
+});
+canvas.addEventListener('pointerup', e => {
+  canvas.classList.remove('drag');
+  const hit = pick(e);
+  if (ptr.mode === 'button' && !ptr.moved && hit === ptr.target) ptr.target.userData.onClick();
+  else if (ptr.mode === 'arcCard' && !ptr.moved) { state.arcFocus = ptr.target.userData.card.idx; setArc(false); }
+  else if (ptr.mode === 'flick') {
+    const dy = e.clientY - ptr.sy;
+    if (!ptr.moved) {
+      if (clickTimer) { clearTimeout(clickTimer); clickTimer = null; like(); }
+      else clickTimer = setTimeout(() => { clickTimer = null; togglePause(); }, 240);
+    } else {
+      state.stackPos += state.dragOffset; state.dragOffset = 0;
+      if (dy < -50) go(1); else if (dy > 50) go(-1);
+    }
+  } else if (ptr.mode === 'pull') {
+    if (state.pull > .8) stepIn();
+    state.pull = 0; pullEl.style.opacity = 0;
+  }
+  ptr.down = false; ptr.mode = null;
+});
+let wheelAcc = 0, wheelLock = 0;
+canvas.addEventListener('wheel', e => {
+  e.preventDefault(); wake(); const now = performance.now(); if (now < wheelLock) return;
+  wheelAcc += e.deltaY; if (Math.abs(wheelAcc) > 60) { if (state.mode === 'arc') { state.yaw -= Math.sign(wheelAcc) * .42; } else go(Math.sign(wheelAcc)); wheelAcc = 0; wheelLock = now + 380; }
+}, { passive: false });
+addEventListener('keydown', e => {
+  wake(); const k = e.key;
+  if (k === 'ArrowDown' || k === 's') { e.preventDefault(); go(1); }
+  else if (k === 'ArrowUp' || k === 'w') { e.preventDefault(); go(-1); }
+  else if (k === ' ') { e.preventDefault(); togglePause(); }
+  else if (k === 'l') like();
+  else if (k === 'Enter' || k === 'e') stepIn();
+  else if (k === 'Escape' || k === 'Backspace') { if (state.mode === 'imm') stepOut(); else if (state.mode === 'arc') setArc(false); }
+  else if (k === 'Tab') { e.preventDefault(); state.mode === 'arc' ? setArc(false) : setArc(true); }
+  else if (k === 'r') toggleRecline();
+  else if (k === 'h') toggleHidden();
+  else if (k === 'o') toggleOverlay();
+  else if (k === 'i') document.getElementById('spec').classList.toggle('on');
+});
+document.getElementById('hudToggle').onclick = () => { const h = document.getElementById('hud'); h.classList.toggle('min'); document.getElementById('hudToggle').textContent = h.classList.contains('min') ? 'Show keys' : 'Hide keys'; };
+
+// ---------- loop ----------
+function resize() { renderer.setSize(innerWidth, innerHeight, false); camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); }
+addEventListener('resize', resize); resize();
+
+const tmpV = new THREE.Vector3();
+let last = performance.now(), frame = 0;
+function tick(now) {
+  const dt = clamp((now - last) / 1000, 0, .05); last = now; frame++;
+  const k = 1 - Math.pow(.0009, dt);           // frame-rate independent smoothing
+
+  // recline: the content pivots with the user's posture, camera follows
+  state.reclineA = lerp(state.reclineA, state.recline ? .9 : 0, k * .6);
+  feedRoot.rotation.x = state.reclineA;
+  camera.rotation.set(state.pitch + state.reclineA, state.yaw, 0);
+  
+
+  state.stackPos = lerp(state.stackPos, state.index, k);
+  state.pullS = lerp(state.pullS, state.pull, k * 1.4);
+
+  // transition progress
+  if (state.mode === 'toImm') { state.trans = Math.min(1, state.trans + dt / 1.1); if (state.trans >= 1) { state.mode = 'imm'; toast(`Continuing at ${fmt(cur().at)} of ${cur().full} · the same moment as the short`, 3000); } }
+  if (state.mode === 'fromImm') { state.trans = Math.max(0, state.trans - dt / .8); if (state.trans <= 0) { state.mode = 'stack'; dome.visible = false; if (afterOut) { const f = afterOut; afterOut = null; f(); } } }
+  const p = easeInOut(state.trans);
+  const immersive = state.mode === 'toImm' || state.mode === 'imm' || state.mode === 'fromImm';
+
+  // arc focus = card closest to gaze
+  if (state.mode === 'arc') {
+    let best = 0, bd = 9; cards.forEach(c => { const a = (c.idx - state.arcCenter) * .42; const dd = Math.abs(a + state.yaw); if (dd < bd) { bd = dd; best = c.idx; } });
+    state.arcFocus = best;
+  }
+
+  // cards
+  cards.forEach(c => {
+    const live = state.mode === 'arc' ? c.idx === state.arcFocus : c.idx === state.index;
+    let tx, ty, tz, rx = 0, ry = 0, sc = 1, op;
+    if (state.mode === 'arc') {
+      const a = (c.idx - state.arcCenter) * .42, R = 2.1;
+      tx = Math.sin(a) * R; ty = CY; tz = -Math.cos(a) * R; ry = -a;
+      op = Math.abs(a) > 1.45 ? 0 : live ? 1 : .55; sc = live ? 1.06 : 1;
+    } else {
+      const d = c.idx - (state.stackPos + state.dragOffset), ad = Math.abs(d);
+      // deck in depth: upcoming clips wait behind (still frames), watched clip lifts up and out
+      tx = 0;
+      if (d >= 0) { ty = CY + Math.min(d, 3) * .22; tz = -DIST - Math.min(d, 3) * .4; sc = 1 - Math.min(d, 3) * .05; op = d < 1 ? 1 - d * .6 : Math.max(0, .4 - (d - 1) * .22); }
+      else { ty = CY - d * (H_CARD * .9); tz = -DIST + d * .1; rx = d * .25; op = Math.max(0, 1 + d * 1.3); }
+      if (c.idx === state.index) { tz += state.pullS * .45; sc *= 1 + state.pullS * .12; }
+      if (immersive) {
+        if (c.idx === state.index) { sc *= 1 + p * 2.4; tz += p * .35; op *= 1 - smooth(.35, .85, p); }
+        else op *= 1 - smooth(0, .3, p);
+      }
+    }
+    const m = c.mesh;
+    m.position.set(lerp(m.position.x, tx, k), lerp(m.position.y, ty, k), lerp(m.position.z, tz, k));
+    if (immersive && c.idx === state.index) m.position.set(tx, ty, tz);
+    m.rotation.x = lerp(m.rotation.x, rx, k); m.rotation.y = lerp(m.rotation.y, ry, k);
+    const s = immersive && c.idx === state.index ? sc : lerp(m.scale.x, sc, k); m.scale.setScalar(s);
+    c.op = immersive && c.idx === state.index ? op : lerp(c.op, op, k); c.mat.opacity = c.op; m.visible = c.op > .01;
+    if (live && !state.paused && !state.hidden) { c.t += dt; }
+    if (live && (frame % 2 === 0 || immersive) && m.visible) drawCard(c);
+  });
+
+  // ornaments: visible in stack mode, fade after 3 s idle, never on top of content
+  const awake = now - state.lastActive < 3000 || hovered;
+  const ornTarget = state.mode === 'stack' && !state.overlay ? (awake ? 1 : 0) : 0;
+  ornAlpha = lerp(ornAlpha, ornTarget * (1 - smooth(0, .25, p)), k);
+  ornPanels.forEach(q => { q.mat.opacity = ornAlpha; q.mesh.visible = ornAlpha > .01; });
+  const live = cards[state.index];
+  const frac = (live.t % CLIP_LEN) / CLIP_LEN, bw = W_CARD - .02;
+  progFg.scale.x = Math.max(.0001, frac * bw); progFg.position.x = -bw / 2 + frac * bw / 2;
+  const progA = state.mode === 'stack' && !state.overlay ? Math.max(ornAlpha, .55) * (1 - p) : 0;
+  progFg.material.opacity = progA; progBg.material.opacity = progA * .8; progFg.visible = progBg.visible = progA > .01;
+
+  // ambient light spill from the playing clip
+  const hue = (state.mode === 'arc' ? SHORTS[state.arcFocus] : cur()).hue;
+  spillColor.setHSL(((hue + 360) % 360) / 360, .75, .5);
+  spill.material.color.lerp(spillColor, k * .5); floorGlow.material.color.copy(spill.material.color);
+  const pulse = .04 * Math.sin(live.t * 1.3);
+  spill.material.opacity = (.2 + pulse) * (1 - p * .7) * (state.mode === 'arc' ? .6 : 1);
+  floorGlow.material.opacity = (.11 + pulse * .5) * (1 - p);
+  grid.material.opacity = .3 * (1 - p);
+
+  // immersive layer
+  if (dome.visible) {
+    dome.material.opacity = smooth(.25, .9, p);
+    if (frame % 2 === 0) drawDome(live.t);
+  }
+  if (state.mode === 'imm' && !state.paused) state.immT += dt;
+  const immAwake = now - state.lastActive < 3500 || hovered === backBtn;
+  immAlpha = lerp(immAlpha, state.mode === 'imm' ? (immAwake ? 1 : 0) : 0, k);
+  immPanels.forEach(q => { q.mat.opacity = immAlpha; q.mesh.visible = immAlpha > .01; });
+  if (state.mode === 'imm' && now - lastPlayerDraw > 250) { player.redraw(); lastPlayerDraw = now; }
+  veil.material.opacity = state.mode === 'toImm' || state.mode === 'fromImm' ? .55 * Math.max(0, 1 - Math.abs(p - .86) / .09) : 0;
+
+  // like burst
+  if (heartT >= 0) { heartT += dt; const t = heartT / .7; heart.mat.opacity = t < .3 ? t / .3 : Math.max(0, 1 - (t - .3) / .7); heart.mesh.scale.setScalar(.6 + Math.min(t, .4) * 1.2); if (t >= 1) { heartT = -1; heart.mat.opacity = 0; } }
+  heart.mesh.visible = heartT >= 0;
+
+  renderer.render(scene, camera);
+  requestAnimationFrame(tick);
+}
+requestAnimationFrame(tick);
+toast('Direction A · Stack + Portal. Scroll to browse, Shift+drag ↓ on the card to step in.', 4200);
+</script>
+</body>
+</html>
