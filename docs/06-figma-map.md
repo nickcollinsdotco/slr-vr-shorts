@@ -7,6 +7,7 @@ File key `94B8znXNJOY4odQBBBUHrB`. IDs captured 6 Oct 2026. **Re-verify before w
 | Page | ID | What's there |
 |---|---|---|
 | Brief | `0:1` | Brief frame `4010:5792`; web Shorts section `4010:5786`; current VR player `4010:5362`; reference shots section `6004:8669` |
+| **Submission** | `6143:500` | The page to present. Sections: A · Story `6143:501`, B · Key screens `6143:2415`, C · Spatial captures `6147:2117`. Copies of the originals with updated copy |
 | Key Screens | `6051:767` | Section `6051:768`: 11 V2 frames + captions (01 Library … 11 Gesture map), made by session 1 |
 | Story | `6053:767` | Section `6053:768`: 00 Cover `6053:769`, 01 Concept `6053:862`, 02 Flow map `6053:891`, 03 Decisions `6054:896`, 04 MVP `6054:1011` |
 | Sandbox | `6004:512` | Apple visionOS kit samples; "UI within sight areas" guide `6004:8167`; Nick's 01 A/B/C (`6018:9181`, `6018:9650`, `6018:9750`); restyles A′ `6027:2256`, B′ `6027:2349`, C′ `6027:2438`, D `6027:2528`, D2 You tab `6033:2051`; notes `6027:2606`; components holder `6025:2255` |
@@ -103,3 +104,5 @@ Apply with `setFillStyleIdAsync` / `setEffectStyleIdAsync` / `setStrokeStyleIdAs
 
   `dt` is clamped to ≥ 0 so stepping doesn't explode the smoothing.
 - Globals reachable from the console: `state`, `cards`, `stepIn()`, `stepOut()`, `setArc()`, `toggleOverlay()`, `toggleHidden()`, `toggleRecline()`.
+- Some text uses **Martian Mono SemiCondensed**, a local font the MCP can't load. Those nodes can't be edited by script; leave them to Nick.
+- Key Screens has two identical rows: `6051:*` at y=160 and `6139:*` at y=-4875.

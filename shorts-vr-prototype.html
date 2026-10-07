@@ -41,7 +41,7 @@ kbd{font:600 11px/1 system-ui;background:rgba(255,255,255,.1);border:1px solid v
   <h1>Shorts in VR · prototype</h1>
   <div class="mode" id="modeLabel"></div>
   <table id="keys"></table>
-  <p><b>In VR (Quest):</b> stick ← → pass / like · ↑ previous · ↓ or A step in · grip + pull down to step in · trigger to click · B undo / back · hold B to hide · stick click to recentre. Hands: point and pinch to click; flicks need controllers in this prototype.</p>
+  <p><b>In VR (Quest):</b> stick ← → skip / like · ↑ previous · ↓ or A step in · grip + pull towards you to step in · trigger to click · B undo / back · hold B to hide · stick click to recentre. Hands: point and pinch to click; flicks need controllers in this prototype.</p>
   <div class="toggle" id="hudToggle">Hide keys</div>
 </div>
 
@@ -91,7 +91,7 @@ const SHORTS = [
 ];
 const N = SHORTS.length;
 const FEEDS = ['winner', 'stack', 'arc'];
-const FEED_LABEL = { winner: 'Winner A · flick + pull down', stack: 'Direction A · deck + portal (earlier)', arc: 'Direction B · arc wall (rejected)' };
+const FEED_LABEL = { winner: 'Winner A · like / skip + pull in', stack: 'Direction A · deck + portal (earlier)', arc: 'Direction B · arc wall (rejected)' };
 
 const state = {
   feed: 'winner',          // winner | stack | arc
@@ -99,13 +99,14 @@ const state = {
   index: 0, stackPos: 0, dragOffset: 0,
   dragX: 0, dragXS: 0, dragUp: 0, dragUpS: 0,
   pull: 0, pullS: 0,
-  paused: false, muted: false, overlay: false, hidden: false,
+  paused: false, muted: false, overlay: false, hidden: false, shot: 'first',
   recline: false, reclineA: 0,
   yaw: 0, pitch: -.17, anchorYaw: 0, needsRecenter: false,
   lastActive: performance.now(), lastAct: performance.now(),
   trans: 0, immT: 0, arcFocus: 0, arcCenter: 0,
   premium: false, previewLeft: 0,
   lesson: 0, undo: null, demoX: 0, demoY: 0, dim: 0,
+  blurDeck: true,          // upcoming clips sit blurred behind the current one
 };
 
 // ---------- helpers ----------
@@ -178,6 +179,32 @@ ptSphere.position.set(0, EYE, 0); ptSphere.rotation.y = Math.PI / 2; ptSphere.vi
 // feed root pivots at the eye so recline (and VR recentre) can re-anchor content to the gaze
 const feedRoot = new THREE.Group(); feedRoot.rotation.order = 'YXZ'; feedRoot.position.set(0, EYE, 0); scene.add(feedRoot);
 
+// shot cameras (C): third-person views for presenting the spatial layout. The viewer is a simple seated figure.
+const SHOTS = ['first', 'shoulder', 'side', 'wide'];
+const shotCam = new THREE.PerspectiveCamera(50, 1, 0.05, 100);
+const viewer = new THREE.Group(); viewer.visible = false; scene.add(viewer);
+(() => {
+  const skin = new THREE.MeshBasicMaterial({ color: 0x0c0c10, fog: false }), dark = new THREE.MeshBasicMaterial({ color: 0x050507, fog: false });
+  const head = new THREE.Mesh(new THREE.SphereGeometry(.1, 24, 16), skin); head.position.set(0, EYE, .02); viewer.add(head);
+  const visor = new THREE.Mesh(new THREE.BoxGeometry(.17, .08, .09), dark); visor.position.set(0, EYE + .005, -.07); viewer.add(visor);
+  const torso = new THREE.Mesh(new THREE.CylinderGeometry(.16, .19, .55, 20), skin); torso.position.set(0, EYE - .42, .06); viewer.add(torso);
+  const seat = new THREE.Mesh(new THREE.BoxGeometry(.6, .1, .55), dark); seat.position.set(0, .45, .12); viewer.add(seat);
+  const back = new THREE.Mesh(new THREE.BoxGeometry(.6, .7, .08), dark); back.position.set(0, .8, .42); viewer.add(back);
+  const gaze = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, EYE, -.12), new THREE.Vector3(0, EYE + CY, -DIST + .02)]),
+    new THREE.LineDashedMaterial({ color: 0xff5a1f, dashSize: .04, gapSize: .03, transparent: true, opacity: .8 }));
+  gaze.computeLineDistances(); viewer.add(gaze);
+})();
+// opaque floor for third-person shots: anything below it is hidden, so a sunk card reads as sunk
+const shotFloor = new THREE.Mesh(new THREE.PlaneGeometry(14, 14), new THREE.MeshBasicMaterial({ color: 0x030304, fog: false }));
+shotFloor.rotation.x = -Math.PI / 2; shotFloor.position.y = -.002; shotFloor.renderOrder = -11; shotFloor.visible = false; scene.add(shotFloor);
+function placeShot() {
+  const t = feedRoot.position, cy = t.y + CY;
+  if (state.shot === 'shoulder') { shotCam.fov = 50; shotCam.position.set(t.x + .75, t.y + .42, t.z + 1.25); shotCam.lookAt(t.x, cy, t.z - DIST); }
+  else if (state.shot === 'side') { shotCam.fov = 34; shotCam.position.set(t.x - 4.6, t.y + .9, t.z - 1.1); shotCam.lookAt(t.x, t.y - .45, t.z - 1.1); }
+  else if (state.shot === 'wide') { shotCam.fov = 45; shotCam.position.set(t.x + 2.2, t.y + 1.6, t.z + 1.8); shotCam.lookAt(t.x, cy - .1, t.z - 1.2); }
+  shotCam.aspect = camera.aspect; shotCam.updateProjectionMatrix();
+}
+
 const spill = new THREE.Mesh(new THREE.PlaneGeometry(3.2, 3.2), new THREE.MeshBasicMaterial({ map: radialTex(), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, opacity: .3, fog: false }));
 spill.renderOrder = -8; spill.position.set(0, CY, -DIST - .55); feedRoot.add(spill);
 const spillColor = new THREE.Color();
@@ -236,7 +263,11 @@ const cards = SHORTS.map((d, idx) => {
 function drawCard(c) {
   const { ctx, cv } = c, w = cv.width, h = cv.height;
   ctx.clearRect(0, 0, w, h); ctx.save(); rr(ctx, 0, 0, w, h, 26); ctx.clip();
+  // upcoming clips are blurred: focus stays on the current one, and it leaves something to find out
+  const soft = state.blurDeck && state.feed !== 'arc' && c.idx !== state.index;
+  if (soft) ctx.filter = 'blur(18px) brightness(.8)';
   drawScene(ctx, w, h, c.d, c.t, false);
+  ctx.filter = 'none';
   if (state.overlay) drawWebOverlay(ctx, w, h, c.d);
   ctx.restore(); c.tex.needsUpdate = true;
 }
@@ -267,6 +298,7 @@ const railDefs = [
   { icon: () => '♥', label: () => fmtK(cur().likes + (cur().liked ? 1 : 0)), on: () => !!cur().liked, click: () => like() },
   { icon: () => cur().saved ? '✓' : '+', label: () => cur().saved ? 'Saved' : 'Save', on: () => !!cur().saved, click: () => { cur().saved = !cur().saved; toast(cur().saved ? 'Saved to Watch later' : 'Removed from Watch later'); redrawOrn(); } },
   { icon: () => state.muted ? '✕' : '♪', label: () => state.muted ? 'Muted' : 'Sound', on: () => false, click: () => { state.muted = !state.muted; toast(state.muted ? 'Muted' : 'Sound on · spatial, anchored to the card'); redrawOrn(); } },
+  { icon: () => '◐', label: () => 'Hide', on: () => false, click: () => toggleHidden() },
   { icon: () => '⋯', label: () => 'More', on: () => false, click: () => toast('More: not interested, report, quality · post-MVP') },
 ];
 railDefs.forEach((def, i) => {
@@ -278,7 +310,7 @@ railDefs.forEach((def, i) => {
     text(ctx, def.icon(), w / 2, 39, 30, 700, on ? ACCENT : '#f2f2f3', 'center');
     text(ctx, def.label(), w / 2, 89, 15, 600, '#d6d6dc', 'center');
   }, { onClick: def.click });
-  p.mesh.position.set(W_CARD / 2 + .075, -.12 - i * .11, 0); orn.add(p.mesh); ornPanels.push(p);
+  p.mesh.position.set(W_CARD / 2 + .075, -.02 - i * .11, 0); orn.add(p.mesh); ornPanels.push(p);
 });
 
 let tab = 0;
@@ -314,7 +346,7 @@ const stepBtn = makePanel(W_CARD, .07, (ctx, w, h, p) => {
   if (d.vr) {
     rr(ctx, 1, 1, w - 2, h - 2, 34); ctx.fillStyle = p.hover ? '#ff7440' : ACCENT; ctx.fill();
     text(ctx, '◉  Step in  ·  VR 180°', 28, h / 2, 23, 750);
-    text(ctx, state.feed === 'winner' ? 'or pull down' : 'continues at ' + fmt(d.at), w - 26, h / 2, 15, 600, 'rgba(255,255,255,.85)', 'right');
+    text(ctx, state.feed === 'winner' ? 'or pull it in' : 'continues at ' + fmt(d.at), w - 26, h / 2, 15, 600, 'rgba(255,255,255,.85)', 'right');
   } else {
     glass(ctx, 1, 1, w - 2, h - 2, 34, p.hover);
     text(ctx, '▶  Watch full video (2D)', 28, h / 2, 21, 650);
@@ -334,8 +366,8 @@ let heartT = -1;
 let stampKind = 'like';
 const stamp = makePanel(.42, .11, (ctx, w, h) => {
   glass(ctx, 1, 1, w - 2, h - 2, 54); const lk = stampKind === 'like';
-  text(ctx, lk ? '♥' : '✕', 60, h / 2 + 2, 44, 700, lk ? ACCENT : '#d6dbe6', 'center');
-  text(ctx, lk ? 'Like' : 'Not interested', 100, h / 2, lk ? 36 : 30, 700);
+  text(ctx, lk ? '♥' : '→', 60, h / 2 + 2, 44, 700, lk ? ACCENT : '#d6dbe6', 'center');
+  text(ctx, lk ? 'Like' : 'Skip', 100, h / 2, 36, 700);
 });
 stamp.mesh.renderOrder = 12; stamp.mat.opacity = 0; feedRoot.add(stamp.mesh);
 const glowMat = new THREE.MeshBasicMaterial({ map: radialTex(), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, opacity: 0, fog: false });
@@ -345,8 +377,8 @@ const glow = new THREE.Mesh(new THREE.PlaneGeometry(W_CARD * 2.2, H_CARD * 1.6),
 const undoPanel = makePanel(.62, .075, (ctx, w, h, p) => {
   const u = state.undo; if (!u) return;
   glass(ctx, 1, 1, w - 2, h - 2, 37, p.hover); const lk = u.kind === 'like';
-  text(ctx, lk ? '♥' : '✕', 38, h / 2, 26, 700, lk ? ACCENT : '#d6dbe6', 'center');
-  text(ctx, lk ? 'Liked · more like this' : 'Not interested · fewer like this', 66, h / 2, 21, 600);
+  text(ctx, lk ? '♥' : '→', 38, h / 2, 26, 700, lk ? ACCENT : '#d6dbe6', 'center');
+  text(ctx, lk ? 'Liked · more like this' : 'Skipped', 66, h / 2, 21, 600);
   rr(ctx, w - 160, 16, 100, h - 32, (h - 32) / 2); ctx.fillStyle = 'rgba(255,255,255,.2)'; ctx.fill();
   text(ctx, 'Undo', w - 110, h / 2, 20, 700, '#fff', 'center');
   const left = clamp(1 - (performance.now() - u.t) / 3000, 0, 1);
@@ -357,9 +389,9 @@ let lastUndoDraw = 0;
 
 // Winner A: first-run coach + ghost hand
 const LESSONS = [
-  ['Flick right to like · left to pass', 'Drag the card sideways, ← →, or thumbstick ← →'],
+  ['Flick right to like · left to skip', 'Drag the card sideways, ← →, or thumbstick ← →'],
   ['Flick up to go back', 'Drag the card up, ↑, or thumbstick ↑'],
-  ['Pull down to step in', 'Drag the card down past the line, or grip + pull down'],
+  ['Pull it in to step in', 'Drag the card down (towards you), or grip + pull towards you'],
 ];
 const coach = makePanel(.46, .15, (ctx, w, h) => {
   if (state.lesson > 2) return; const [a, b] = LESSONS[state.lesson];
@@ -376,7 +408,7 @@ function setLesson(n) { state.lesson = n; coach.redraw(); ghost.redraw(); }
 // pull hint (3D so it also works in VR)
 const pullHint = makePanel(.44, .1, (ctx, w, h) => {
   glass(ctx, 1, 1, w - 2, h - 2, 30); const d = cur(); const ready = state.pull > .8;
-  text(ctx, !d.vr ? 'No VR source for this clip' : ready ? 'Release to step in' : (state.feed === 'winner' ? 'Pull down to step in' : 'Pull to step in'), w / 2, 36, 22, 700, '#fff', 'center');
+  text(ctx, !d.vr ? 'No VR source for this clip' : ready ? 'Release to step in' : 'Pull in to step in', w / 2, 36, 22, 700, '#fff', 'center');
   rr(ctx, 40, 62, w - 80, 8, 4); ctx.fillStyle = 'rgba(255,255,255,.18)'; ctx.fill();
   rr(ctx, 40, 62, Math.max(8, (w - 80) * clamp(state.pull / .8, 0, 1)), 8, 4); ctx.fillStyle = ACCENT; ctx.fill();
 });
@@ -472,11 +504,11 @@ const inFeed = () => state.phase === 'feed';
 function updateHud() {
   const k = s => s;
   const rows = {
-    winner: [['Drag card ← →', 'pass / like (commits past 30%)'], ['Drag card ↑ · <kbd>↑</kbd>', 'previous clip'], ['Drag card ↓ · <kbd>↓</kbd> · <kbd>Enter</kbd>', 'pull down to step in'], ['<kbd>←</kbd> <kbd>→</kbd>', 'pass / like'], ['<kbd>Z</kbd>', 'undo (3 s)'], ['<kbd>G</kbd>', 'replay first-run lessons']],
+    winner: [['Drag card ← →', 'skip / like (commits past 30%)'], ['Drag card ↑ · <kbd>↑</kbd>', 'previous clip'], ['Drag card ↓ · <kbd>↓</kbd> · <kbd>Enter</kbd>', 'pull in to step in (down = towards you on a flat screen)'], ['<kbd>←</kbd> <kbd>→</kbd>', 'skip / like'], ['<kbd>Z</kbd>', 'undo (3 s)'], ['<kbd>G</kbd>', 'replay first-run lessons']],
     stack: [['Scroll · drag card ↕ · <kbd>↑</kbd><kbd>↓</kbd>', 'next / prev'], ['<kbd>Shift</kbd>+drag ↓ card', 'pull to step in'], ['<kbd>Enter</kbd>', 'step in']],
     arc: [['Drag · scroll · <kbd>←</kbd><kbd>→</kbd>', 'look along the wall'], ['Click a card / <kbd>Enter</kbd>', 'open it in Winner A']],
   }[state.feed];
-  const common = [['Click card', 'pause'], ['Double-click', 'like'], ['<kbd>P</kbd>', 'free ⇄ Premium (now ' + (state.premium ? 'Premium' : 'Free') + ')'], ['<kbd>Esc</kbd>', 'back to feed'], ['<kbd>Tab</kbd>', 'next model'], ['<kbd>R</kbd> · <kbd>H</kbd>', 'recline · hide'], ['<kbd>O</kbd> · <kbd>I</kbd>', 'overlay compare · spec'], ['Drag empty space', 'look around']];
+  const common = [['Click card', 'pause'], ['Double-click', 'like'], ['<kbd>P</kbd>', 'free ⇄ Premium (now ' + (state.premium ? 'Premium' : 'Free') + ')'], ['<kbd>Esc</kbd>', 'back to feed'], ['<kbd>Tab</kbd>', 'next model'], ['<kbd>R</kbd> · <kbd>H</kbd>', 'recline · hide'], ['<kbd>O</kbd> · <kbd>I</kbd>', 'overlay compare · spec'], ['<kbd>V</kbd>', 'blur upcoming clips (now ' + (state.blurDeck ? 'on' : 'off') + ')'], ['<kbd>C</kbd>', 'camera: your view / shoulder / side / wide'], ['Drag empty space', 'look around']];
   document.getElementById('keys').innerHTML = rows.map(r => `<tr><td>${k(r[0])}</td><td>${r[1]}</td></tr>`).join('') + common.map((r, i) => `<tr${i === 0 ? ' class="sep"' : ''}><td>${r[0]}</td><td>${r[1]}</td></tr>`).join('');
   document.getElementById('modeLabel').textContent = FEED_LABEL[state.feed];
 }
@@ -636,7 +668,7 @@ canvas.addEventListener('wheel', e => {
   if (state.feed === 'arc') state.yaw -= dir * .42;
   else if (state.feed === 'stack') go(dir);
   else if (dir < 0) previous();
-  else if (!wheelHinted) { wheelHinted = true; toast('Winner A: drag the card sideways to like or pass, down to step in'); }
+  else if (!wheelHinted) { wheelHinted = true; toast('Winner A: drag the card sideways to like or skip, down (towards you) to step in'); }
 }, { passive: false });
 addEventListener('keydown', e => {
   act(); const k = e.key, kl = k.toLowerCase();
@@ -647,6 +679,8 @@ addEventListener('keydown', e => {
   if (kl === 'r') { toggleRecline(); return; }
   if (kl === 'h') { toggleHidden(); return; }
   if (kl === 'o') { toggleOverlay(); return; }
+  if (kl === 'c') { state.shot = SHOTS[(SHOTS.indexOf(state.shot) + 1) % SHOTS.length]; toast('Camera: ' + { first: 'your view', shoulder: 'over the shoulder', side: 'side view', wide: 'wide' }[state.shot], 1400); updateHud(); return; }
+  if (kl === 'v') { state.blurDeck = !state.blurDeck; cards.forEach(drawCard); updateHud(); toast(state.blurDeck ? 'Upcoming clips blurred: focus on this one, curiosity for the next' : 'Upcoming clips sharp (privacy setting off)'); return; }
   if (kl === 'i') { document.getElementById('spec').classList.toggle('on'); return; }
   if (k === ' ') { e.preventDefault(); togglePause(); return; }
   if (state.phase === 'paywall') { if (k === 'Enter') getPremium(); return; }
@@ -729,15 +763,16 @@ function pollXR(now) {
   const s = renderer.xr.getSession(); if (!s) return;
   for (const src of s.inputSources) {
     const gp = src.gamepad; if (!gp) continue;
-    const key = src.handedness; const prev = pads.get(key) || { x: 0, y: 0, b: [], bDown: 0, gripY: null };
+    const key = src.handedness; const prev = pads.get(key) || { x: 0, y: 0, b: [], bDown: 0, gripD: null };
     const x = gp.axes[2] || 0, y = gp.axes[3] || 0; const ctrl = xrCtrls.find(c => c.userData.source === src);
     const pressed = i => !!(gp.buttons[i] && gp.buttons[i].pressed), was = i => !!prev.b[i];
     if (Math.abs(x) > .7 && Math.abs(prev.x) <= .5) { act(); stickX(Math.sign(x)); }
     if (Math.abs(y) > .7 && Math.abs(prev.y) <= .5) { act(); stickY(Math.sign(y)); }
-    if (pressed(1) && ctrl) { // grip + pull down
-      act(); const yNow = _p.setFromMatrixPosition(ctrl.matrixWorld).y; if (prev.gripY === null) prev.gripY = yNow;
-      if (inFeed() && state.feed !== 'arc') state.pull = clamp((prev.gripY - yNow) / .2, 0, 1);
-    } else if (prev.gripY !== null) { if (state.pull > .8) stepIn(); state.pull = 0; prev.gripY = null; }
+    if (pressed(1) && ctrl) { // grip + pull towards you: the hand closes on the head
+      act(); const head = new THREE.Vector3().setFromMatrixPosition(renderer.xr.getCamera(camera).matrixWorld);
+      const dNow = _p.setFromMatrixPosition(ctrl.matrixWorld).distanceTo(head); if (prev.gripD === null) prev.gripD = dNow;
+      if (inFeed() && state.feed !== 'arc') state.pull = clamp((prev.gripD - dNow) / .18, 0, 1);
+    } else if (prev.gripD !== null) { if (state.pull > .8) stepIn(); state.pull = 0; prev.gripD = null; }
     if (pressed(4) && !was(4)) { act(); buttonA(); }
     if (pressed(5) && !was(5)) prev.bDown = now;
     if (pressed(5) && prev.bDown && now - prev.bDown > 600) { prev.bDown = 0; act(); toggleHidden(); }
@@ -757,7 +792,7 @@ function pollXR(now) {
 function resize() { renderer.setSize(innerWidth, innerHeight, false); camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); }
 addEventListener('resize', resize); resize();
 
-let last = performance.now(), frame = 0;
+let last = performance.now(), frame = 0, deckIdx = -1;
 function tick(now) {
   const xr = renderer.xr.isPresenting;
   const dt = clamp((now - last) / 1000, 0, .05); last = now; frame++;
@@ -799,7 +834,8 @@ function tick(now) {
     state.demoX = state.lesson === 0 ? .16 * a : 0; state.demoY = state.lesson === 1 ? .1 * a : state.lesson === 2 ? -.08 * a : 0;
   } else { state.demoX = lerp(state.demoX, 0, k); state.demoY = lerp(state.demoY, 0, k); }
 
-  // cards
+  // cards (redraw the deck when the current clip changes, so blur follows focus)
+  if (state.index !== deckIdx) { deckIdx = state.index; cards.forEach(drawCard); }
   cards.forEach(c => {
     const live = state.feed === 'arc' && inFeed() ? c.idx === state.arcFocus : c.idx === state.index;
     let tx = 0, ty = CY, tz = -DIST, rx = 0, ry = 0, rz = 0, sc = 1, op;
@@ -898,11 +934,14 @@ function tick(now) {
   if (heartT >= 0) { heartT += dt; const t = heartT / .7; heart.mat.opacity = t < .3 ? t / .3 : Math.max(0, 1 - (t - .3) / .7); heart.mesh.scale.setScalar(.6 + Math.min(t, .4) * 1.2); if (t >= 1) { heartT = -1; heart.mat.opacity = 0; } }
   heart.mesh.visible = heartT >= 0;
 
-  renderer.render(scene, camera);
+  const third = !xr && state.shot !== 'first';
+  viewer.visible = shotFloor.visible = third; if (third) placeShot();
+  scene.fog.near = third ? 9 : 4; scene.fog.far = third ? 22 : 14;
+  renderer.render(scene, third ? shotCam : camera);
 }
 updateHud(); setLesson(0);
 renderer.setAnimationLoop(tick);
-toast('Winner A: drag the card sideways to like or pass, down to step in. Tab switches models.', 4200);
+toast('Winner A: drag sideways to like or skip, down (towards you) to step in. Tab switches models.', 4200);
 </script>
 </body>
 </html>

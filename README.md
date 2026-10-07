@@ -1,25 +1,39 @@
-# SLR · Shorts in VR
+# Shorts in VR
 
-Context repo for Nick Collins' Product Designer take-home: bring SLR's web Shorts into the VR app so it feels native to VR.
+**The short is the trailer. VR is the film.**
 
-- **Figma**: https://www.figma.com/design/94B8znXNJOY4odQBBBUHrB/ (key `94B8znXNJOY4odQBBBUHrB`)
-- **Prototype** (three.js, desktop): `shorts-vr-prototype.html`. Private artifact: https://claude.ai/artifact/JXRBiWo5zo6DAdBSkWhxSx
-- **Start here**: `CLAUDE.md`, then `docs/05-critique-and-gaps.md`
+A take-home for SLR: bring the web Shorts feed into the VR app so it feels like it belongs there.
 
-| Doc | What |
-|---|---|
-| `docs/01-brief-and-context.md` | Brief, company and product context |
-| `docs/02-session-history.md` | How the work evolved in session 1 |
-| `docs/03-current-concept.md` | Concept, gestures, spec, MVP as they stand |
-| `docs/04-decision-log.md` | Decisions with alternatives, trade-offs, confidence |
-| `docs/05-critique-and-gaps.md` | What's weak or missing. The Figma file isn't canon |
-| `docs/06-figma-map.md` | Page/node IDs, reusable components and styles, API gotchas |
-| `docs/07-vr-ux-reference.md` | VR ergonomics, comfort, input, platform notes |
+![A seated viewer with one short floating in front of them, the next clips queued behind](captures/01-feed-wide.png)
 
-Run the prototype:
+## The idea
 
-```bash
-python -m http.server 5178
-```
+Every short on the web already ends with "Watch full video". In VR that link becomes the main gesture.
 
-Then open http://localhost:5178/shorts-vr-prototype.html
+1. **Browse.** One flat clip at a time, 1.6 m away, a little below your eyes. Controls sit outside the card, so nothing covers the video. The next clips wait behind it, blurred.
+2. **Flick.** Right to like, left to skip, up to go back.
+3. **Step in.** Pinch the card and pull it towards you. You land in the full 180° scene at the same second the short was cut from.
+
+| ![](captures/05-step-in-0-wide.png) | ![](captures/05-step-in-1-wide.png) | ![](captures/05-step-in-2-wide.png) | ![](captures/05-step-in-3-wide.png) |
+|:--:|:--:|:--:|:--:|
+| Pull | Release | Wrap | 180° |
+
+## Why depth, not a stack
+
+Seated, your eyes are about 1.2 m off the floor. Stack 1.1 m cards vertically, like the web feed, and the next clip ends up in the floor. Queueing them behind keeps every card in view, and only the front one plays video.
+
+## One model, two inputs
+
+| | Hands | Controller |
+|---|---|---|
+| Like | Flick right | Stick → |
+| Skip | Flick left | Stick ← |
+| Previous | Flick up | Stick ↑ |
+| Step in | Pinch, pull towards you | Grip + pull, A, or stick ↓ |
+| Hide | Hide button | Hold B |
+
+## Look
+
+- **Design:** [Figma](https://www.figma.com/design/94B8znXNJOY4odQBBBUHrB/). Pages 0 to 4, in order.
+- **Prototype:** `shorts-vr-prototype.html`, three.js with WebXR. Run `python -m http.server 5181` and open `localhost:5181/shorts-vr-prototype.html`. Drag the card, press `C` to change camera, `V` to toggle blur. Works in the Quest browser.
+- **Thinking:** `docs/` holds the brief, decisions and trade-offs.
