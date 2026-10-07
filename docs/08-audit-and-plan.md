@@ -26,6 +26,11 @@ All hidden layers are hidden, not deleted.
 
 Open: 05 info panel still says "Dirty Sheets" for the clip being skipped (needs that clip's real title); skip glow is orange like the Like glow (make it neutral grey).
 
+### 7 Oct, late: handover structure
+- Pages: 0 · Brief, 1 · Concept, 2 · Key screens, 3 · In the room, 4 · Decisions & MVP, Sandbox. Nick removed the other archive pages.
+- 3 · In the room: boards "In the room" and "Stepping in" (storyboard reshot so each step reads: pull, grow, wrap, 180°).
+- 07b: curved vignette (`Curved vignette · 180°`) under the player UI to suggest the 180° wrap.
+
 ### Still to do (Nick, design)
 1. Recolour feed ornaments (rail, info, CTA, coach mark, toasts) from glass to the SLR player panel style.
 2. Library: switch to `01 B` (SLR sidebar), swap kittens for blurred stills.
