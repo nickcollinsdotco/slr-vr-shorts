@@ -2,7 +2,7 @@
 
 **The short is the trailer. VR is the film.**
 
-A take-home for SLR: bring the web Shorts feed into the VR app so it feels like it belongs there.
+Prototype for SLR: bring the web Shorts feed into the VR app so it feels like it belongs there.
 
 ![A seated viewer with one short floating in front of them, the next clips queued behind](captures/01-feed-wide.png)
 
